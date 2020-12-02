@@ -8,3 +8,9 @@ Validate user profile nad attributes server-side
 * Pattern: Specifies a regular expression that defines a pattern the entered data needs to follow.
 
 Tested on Keycloak 7.0.0
+
+# Example for Registration flow
+![Example for Registration flow](image.png)
+ 
+ # Example for configurations:
+ 
