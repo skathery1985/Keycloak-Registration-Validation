@@ -1,0 +1,250 @@
+package com.github.skathery1985.keycloak.profilevalidation;
+/*
+ * Copyright 2016 Red Hat, Inc. and/or its affiliates
+ * and other contributors as indicated by the @author tags.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import org.jboss.logging.Logger;
+import org.keycloak.Config;
+import org.keycloak.authentication.FormAction;
+import org.keycloak.authentication.FormActionFactory;
+import org.keycloak.authentication.FormContext;
+import org.keycloak.authentication.ValidationContext;
+import org.keycloak.authentication.forms.RegistrationPage;
+import org.keycloak.broker.oidc.mappers.UserAttributeMapper;
+import org.keycloak.events.Details;
+import org.keycloak.events.Errors;
+import org.keycloak.forms.login.LoginFormsProvider;
+import org.keycloak.models.*;
+import org.keycloak.models.utils.FormMessage;
+import org.keycloak.provider.ProviderConfigProperty;
+import org.keycloak.services.messages.Messages;
+import javax.ws.rs.core.MultivaluedMap;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.regex.Pattern;
+
+/**
+ * @author <a href="mailto:skathery1985@gmail.com">Saleh S.Kathery</a>
+ * Profile and attributes validation
+ * @version $Revision: 1 $
+ * 2019-12-05
+ */
+public class RegistrationProfileWithValidation implements FormAction, FormActionFactory {
+
+    private static final Logger logger = Logger.getLogger(RegistrationProfileWithValidation.class);
+
+    @Override
+    public String getHelpText() {
+        return Contstants.CONF_PRP_PROVIDER_HELP;
+    }
+
+    @Override
+    public List<ProviderConfigProperty> getConfigProperties() {
+        return CONFIG_PROPERTIES;
+    }
+
+    @Override
+    public void validate(ValidationContext context) {
+
+        AuthenticatorConfigModel configModel = context.getAuthenticatorConfig();
+        List<String> attributes = new ArrayList<>(Arrays.asList(configModel.getConfig().get(Contstants.CONF_PRP_ATTRIBUTES_NAME).split("##")));
+
+        MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
+        List<FormMessage> errors = new ArrayList<>();
+
+        context.getEvent().detail(Details.REGISTER_METHOD, "form");
+        String eventError = Errors.INVALID_REGISTRATION;
+
+        if (Validations.isBlank(formData.getFirst((RegistrationPage.FIELD_FIRST_NAME)))) {
+            errors.add(new FormMessage(RegistrationPage.FIELD_FIRST_NAME, Messages.MISSING_FIRST_NAME));
+        }
+
+        if (Validations.isBlank(formData.getFirst((RegistrationPage.FIELD_LAST_NAME)))) {
+            errors.add(new FormMessage(RegistrationPage.FIELD_LAST_NAME, Messages.MISSING_LAST_NAME));
+        }
+        
+        String email = formData.getFirst(Validations.FIELD_EMAIL);
+        
+        boolean emailValid = true;
+        if (Validations.isBlank(email)) {
+            errors.add(new FormMessage(RegistrationPage.FIELD_EMAIL, Messages.MISSING_EMAIL));
+            emailValid = false;
+        } else if (!Validations.isEmailValid(email)) {
+            context.getEvent().detail(Details.EMAIL, email);
+            errors.add(new FormMessage(RegistrationPage.FIELD_EMAIL, Messages.INVALID_EMAIL));
+            emailValid = false;
+        }
+
+        //INVALID ATTRIBUTES
+        for (Iterator<String> i = attributes.iterator(); i.hasNext(); ) {
+
+            boolean attValid = true;
+
+            String item = i.next();
+
+            String Attribute = item.split(":", 4)[0];
+            String Regex = item.split(":", 4)[1];
+            String stringIsReqiured = item.split(":", 4)[2];
+            boolean IsReqiured = Boolean.valueOf(stringIsReqiured);
+            String stringIsUnique = item.split(":", 4)[3];
+            boolean IsUnique = Boolean.valueOf(stringIsUnique);
+
+            String AttributeValue = formData.getFirst("user.attributes." +Attribute);
+            Pattern ATTRIBUTE_PATTERN = Pattern.compile(Regex);
+
+            //is reqiured
+            if(IsReqiured && Validations.isBlank(AttributeValue))
+            {
+                errors.add(new FormMessage("user.attributes." + Attribute, "MISSING_"+Attribute));
+                attValid = false;
+            }
+
+            //is invalid
+            if(!Validations.isBlank(AttributeValue) && !ATTRIBUTE_PATTERN.matcher(AttributeValue).matches())
+            {
+                errors.add(new FormMessage("user.attributes." + Attribute, "INVALID_"+Attribute));
+                attValid = false;
+            }
+
+            //is unique
+            List<UserModel> userModels = context.getSession().users().searchForUserByUserAttribute(Attribute,AttributeValue,context.getRealm());
+            if (IsUnique && attValid && !Validations.isBlank(AttributeValue) && userModels != null && !userModels.isEmpty() && userModels.size() > 0) {
+                eventError = Attribute + "_IN_USE";
+                formData.remove("user.attributes." + Attribute);
+                context.getEvent().detail(Attribute, AttributeValue);
+                errors.add(new FormMessage("user.attributes." + Attribute, "EXISTS_"+Attribute));
+            }
+        }
+
+        if (emailValid &&
+                !context.getRealm().isDuplicateEmailsAllowed() &&
+                (context.getSession().users().getUserByEmail(email, context.getRealm()) != null ||
+                context.getSession().users().getUserByUsername(email, context.getRealm()) != null)) {
+
+            eventError = Errors.EMAIL_IN_USE;
+            formData.remove(Validations.FIELD_EMAIL);
+
+            context.getEvent().detail(Details.EMAIL, email);
+            errors.add(new FormMessage(RegistrationPage.FIELD_EMAIL, Messages.EMAIL_EXISTS));
+        }
+
+        if (errors.size() > 0) {
+            context.error(eventError);
+            context.validationError(formData, errors);
+            return;
+        } else {
+            context.success();
+        }
+    }
+
+    @Override
+    public void success(FormContext context) {
+        UserModel user = context.getUser();
+        MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
+        user.setFirstName(formData.getFirst(RegistrationPage.FIELD_FIRST_NAME));
+        user.setLastName(formData.getFirst(RegistrationPage.FIELD_LAST_NAME));
+        user.setEmail(formData.getFirst(RegistrationPage.FIELD_EMAIL));
+    }
+
+    @Override
+    public void buildPage(FormContext context, LoginFormsProvider form) {
+        // complete
+    }
+
+    @Override
+    public boolean requiresUser() {
+        return false;
+    }
+
+    @Override
+    public boolean configuredFor(KeycloakSession session, RealmModel realm, UserModel user) {
+        return true;
+    }
+
+    @Override
+    public void setRequiredActions(KeycloakSession session, RealmModel realm, UserModel user) {
+
+    }
+
+    @Override
+    public boolean isUserSetupAllowed() {
+        return false;
+    }
+
+
+    @Override
+    public void close() {
+
+    }
+
+    @Override
+    public String getDisplayType() {
+        return Contstants.CONF_PRP_PROVIDER_NAME;
+    }
+
+    @Override
+    public String getReferenceCategory() {
+        return Contstants.CONF_PRP_PROVIDER_REF_CAT;
+    }
+
+    @Override
+    public boolean isConfigurable() {
+        return true;
+    }
+
+    private static AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
+            AuthenticationExecutionModel.Requirement.REQUIRED,
+            AuthenticationExecutionModel.Requirement.DISABLED
+    };
+    @Override
+    public AuthenticationExecutionModel.Requirement[] getRequirementChoices() {
+        return REQUIREMENT_CHOICES;
+    }
+    @Override
+    public FormAction create(KeycloakSession session) {
+        return this;
+    }
+
+    @Override
+    public void init(Config.Scope config) {
+
+    }
+
+    @Override
+    public void postInit(KeycloakSessionFactory factory) {
+
+    }
+
+    @Override
+    public String getId() {
+        return Contstants.CONF_PRP_PROVIDER_ID;
+    }
+
+
+    private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<ProviderConfigProperty>();
+
+    static {
+        ProviderConfigProperty property;
+        property = new ProviderConfigProperty();
+        property.setName(Contstants.CONF_PRP_ATTRIBUTES_NAME);
+        property.setLabel(Contstants.CONF_PRP_ATTRIBUTES_LABEL);
+        property.setType(ProviderConfigProperty.MULTIVALUED_STRING_TYPE);
+        property.setHelpText(Contstants.CONF_PRP_ATTRIBUTES_HELP);
+        CONFIG_PROPERTIES.add(property);
+    }
+}
