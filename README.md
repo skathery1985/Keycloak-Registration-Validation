@@ -25,12 +25,13 @@ our recipe is attributeName:attributeRegex:isRequired:isUnique\
  
  ## Example of adding a custom attribute in themes/YourTheme/login/register.ftl\
  Don't forget to add a validation client-side duh
- ```<div class="${properties.kcFormGroupClass!} ${messagesPerField.printIfExists('mobile',properties.kcFormGroupErrorClass!)}">
-                <div class="${properties.kcLabelWrapperClass!}">
-                    <label for="mobile" class="${properties.kcLabelClass!}">${msg("mobile")}</label>
-                </div>
-                <div class="${properties.kcInputWrapperClass!}">
-                
-                    <input type="text" id="user.attributes.mobile" class="${properties.kcInputClass!}" name="user.attributes.mobile" value="${(register.formData.mobile!'')}"  />
-                </div>
-            </div>```
+ ```html
+ <div class="${properties.kcFormGroupClass!} ${messagesPerField.printIfExists('mobile',properties.kcFormGroupErrorClass!)}">
+   <div class="${properties.kcLabelWrapperClass!}">
+      <label for="mobile" class="${properties.kcLabelClass!}">${msg("mobile")}</label>
+   </div>
+   <div class="${properties.kcInputWrapperClass!}">
+      <input type="text" id="user.attributes.mobile" class="${properties.kcInputClass!}" name="user.attributes.mobile" value="${(register.formData.mobile!'')}"  />
+   </div>
+</div>
+ ```
