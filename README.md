@@ -8,7 +8,7 @@ Validate user profile nad attributes server-side
 * Pattern: Specifies a regular expression that defines a pattern the entered data needs to follow.
 * Localization: you can localize error messages for invalid entered data.
 
-Tested on Keycloak 7.0.0
+Tested on Keycloak 12.0.1
 
 ### Example for Registration flow
 ![Example for Registration flow](example-registration-flow.png)
