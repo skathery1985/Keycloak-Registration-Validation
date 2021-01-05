@@ -16,14 +16,12 @@ package com.github.skathery1985.keycloak.profilevalidation;
  * limitations under the License.
  */
 
-import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.authentication.FormAction;
 import org.keycloak.authentication.FormActionFactory;
 import org.keycloak.authentication.FormContext;
 import org.keycloak.authentication.ValidationContext;
 import org.keycloak.authentication.forms.RegistrationPage;
-import org.keycloak.broker.oidc.mappers.UserAttributeMapper;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.forms.login.LoginFormsProvider;
@@ -31,12 +29,14 @@ import org.keycloak.models.*;
 import org.keycloak.models.utils.FormMessage;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.services.messages.Messages;
+
 import javax.ws.rs.core.MultivaluedMap;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Pattern;
+
+import static com.github.skathery1985.keycloak.profilevalidation.Contstants.*;
 
 /**
  * @author <a href="mailto:skathery1985@gmail.com">Saleh S.Kathery</a>
@@ -45,8 +45,6 @@ import java.util.regex.Pattern;
  * 2019-12-05
  */
 public class RegistrationProfileWithValidation implements FormAction, FormActionFactory {
-
-    private static final Logger logger = Logger.getLogger(RegistrationProfileWithValidation.class);
 
     @Override
     public String getHelpText() {
@@ -77,9 +75,9 @@ public class RegistrationProfileWithValidation implements FormAction, FormAction
         if (Validations.isBlank(formData.getFirst((RegistrationPage.FIELD_LAST_NAME)))) {
             errors.add(new FormMessage(RegistrationPage.FIELD_LAST_NAME, Messages.MISSING_LAST_NAME));
         }
-        
+
         String email = formData.getFirst(Validations.FIELD_EMAIL);
-        
+
         boolean emailValid = true;
         if (Validations.isBlank(email)) {
             errors.add(new FormMessage(RegistrationPage.FIELD_EMAIL, Messages.MISSING_EMAIL));
@@ -91,50 +89,42 @@ public class RegistrationProfileWithValidation implements FormAction, FormAction
         }
 
         //INVALID ATTRIBUTES
-        for (Iterator<String> i = attributes.iterator(); i.hasNext(); ) {
-
-            boolean attValid = true;
-
-            String item = i.next();
+        for (String item : attributes) {
 
             String Attribute = item.split(":", 4)[0];
             String Regex = item.split(":", 4)[1];
-            String stringIsReqiured = item.split(":", 4)[2];
-            boolean IsReqiured = Boolean.valueOf(stringIsReqiured);
-            String stringIsUnique = item.split(":", 4)[3];
-            boolean IsUnique = Boolean.valueOf(stringIsUnique);
+            boolean IsReqiured = Boolean.parseBoolean(item.split(":", 4)[2]);
+            boolean IsUnique = Boolean.parseBoolean(item.split(":", 4)[3]);
 
-            String AttributeValue = formData.getFirst("user.attributes." +Attribute);
+            String AttributeValue = formData.getFirst(Constants.USER_ATTRIBUTES_PREFIX + Attribute);
             Pattern ATTRIBUTE_PATTERN = Pattern.compile(Regex);
 
             //is reqiured
-            if(IsReqiured && Validations.isBlank(AttributeValue))
-            {
-                errors.add(new FormMessage("user.attributes." + Attribute, "MISSING_"+Attribute));
-                attValid = false;
+            if (IsReqiured && Validations.isBlank(AttributeValue)) {
+                errors.add(new FormMessage(Constants.USER_ATTRIBUTES_PREFIX + Attribute, MISSING_ATTRIBUTE + Attribute));
+                continue;
             }
 
             //is invalid
-            if(!Validations.isBlank(AttributeValue) && !ATTRIBUTE_PATTERN.matcher(AttributeValue).matches())
-            {
-                errors.add(new FormMessage("user.attributes." + Attribute, "INVALID_"+Attribute));
-                attValid = false;
+            if (!Validations.isBlank(AttributeValue) && !ATTRIBUTE_PATTERN.matcher(AttributeValue).matches()) {
+                errors.add(new FormMessage(Constants.USER_ATTRIBUTES_PREFIX + Attribute, INVALID_ATTRIBUTE + Attribute));
+                continue;
             }
 
             //is unique
-            List<UserModel> userModels = context.getSession().users().searchForUserByUserAttribute(Attribute,AttributeValue,context.getRealm());
-            if (IsUnique && attValid && !Validations.isBlank(AttributeValue) && userModels != null && !userModels.isEmpty() && userModels.size() > 0) {
-                eventError = Attribute + "_IN_USE";
-                formData.remove("user.attributes." + Attribute);
+            List<UserModel> userModels = context.getSession().users().searchForUserByUserAttribute(Attribute, AttributeValue, context.getRealm());
+            if (IsUnique && !Validations.isBlank(AttributeValue) && userModels != null && !userModels.isEmpty()) {
+                eventError = EXISTS_ATTRIBUTE + Attribute;
+                formData.remove(Constants.USER_ATTRIBUTES_PREFIX + Attribute);
                 context.getEvent().detail(Attribute, AttributeValue);
-                errors.add(new FormMessage("user.attributes." + Attribute, "EXISTS_"+Attribute));
+                errors.add(new FormMessage(Constants.USER_ATTRIBUTES_PREFIX + Attribute, EXISTS_ATTRIBUTE + Attribute));
             }
         }
 
         if (emailValid &&
                 !context.getRealm().isDuplicateEmailsAllowed() &&
                 (context.getSession().users().getUserByEmail(email, context.getRealm()) != null ||
-                context.getSession().users().getUserByUsername(email, context.getRealm()) != null)) {
+                        context.getSession().users().getUserByUsername(email, context.getRealm()) != null)) {
 
             eventError = Errors.EMAIL_IN_USE;
             formData.remove(Validations.FIELD_EMAIL);
@@ -147,9 +137,9 @@ public class RegistrationProfileWithValidation implements FormAction, FormAction
             context.error(eventError);
             context.validationError(formData, errors);
             return;
-        } else {
-            context.success();
         }
+
+        context.success();
     }
 
     @Override
@@ -207,7 +197,7 @@ public class RegistrationProfileWithValidation implements FormAction, FormAction
         return true;
     }
 
-    private static AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
+    private static final AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
             AuthenticationExecutionModel.Requirement.REQUIRED,
             AuthenticationExecutionModel.Requirement.DISABLED
     };
@@ -236,7 +226,7 @@ public class RegistrationProfileWithValidation implements FormAction, FormAction
     }
 
 
-    private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<ProviderConfigProperty>();
+    private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
 
     static {
         ProviderConfigProperty property;
