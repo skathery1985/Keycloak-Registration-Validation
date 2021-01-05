@@ -13,6 +13,9 @@ Tested on Keycloak 7.0.0
 ### Example for Registration flow
 ![Example for Registration flow](example-registration-flow.png)
  
+ ### Change the bindings for Registration flow
+![Example for Registration flow](example-binding-registration-flow.png)
+ 
 ### Example for configurations
 our recipe is attributeName:attributeRegex:isRequired:isUnique\
 ```e.g: mobile:^[0-9]*$:true:true```\
