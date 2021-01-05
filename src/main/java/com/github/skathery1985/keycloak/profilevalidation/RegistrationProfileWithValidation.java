@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static com.github.skathery1985.keycloak.profilevalidation.Contstants.*;
 import static org.keycloak.models.Constants.USER_ATTRIBUTES_PREFIX;
@@ -118,7 +119,7 @@ public class RegistrationProfileWithValidation implements FormAction, FormAction
             }
 
             //is unique
-            List<UserModel> userModels = context.getSession().users().searchForUserByUserAttribute(Attribute, AttributeValue, context.getRealm());
+            List<UserModel> userModels = context.getSession().users().searchForUserByUserAttributeStream(Attribute, AttributeValue, context.getRealm()).collect(Collectors.toList());
             if (IsUnique && !isBlank(AttributeValue) && userModels != null && !userModels.isEmpty()) {
                 eventError = EXISTS_ATTRIBUTE + Attribute;
                 formData.remove(USER_ATTRIBUTES_PREFIX + Attribute);
